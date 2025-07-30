@@ -1,0 +1,11 @@
+.vscode
+*.exe
+.idea
+venv
+.venv
+.git
+pycache
+.DS_STORE
+cmake-build-debug
+*.bin
+.clang-format
