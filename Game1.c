@@ -182,11 +182,10 @@ int main() {
     SetConsoleOutputCP(CP_UTF8);
     HideCursor();
 
-    printf("%s",TargetsMatr[0].TypeName);
-
     if (!OnDraw("UI.ini")) {
         printf("Make sure 'UI.ini' spot in the game directory.\n");
         Sleep(20000); return 1; }
+    printf("%s Gigga: ", TargetsMatr[1].TypeName);
     if (!LoadData("TargetsLib.csv")) {
         printf("Make sure 'TargetsLib.csv' spot in the game directory.\n");
         Sleep(20000); return 1; }
