@@ -5,6 +5,12 @@
 #include <math.h>
 #include <time.h>
 
+#define MIN(i, j) (((i) < (j)) ? (i) : (j))
+#define MAX(i, j) (((i) > (j)) ? (i) : (j))
+void Clamp(int* Num_, int Max_) {
+    if (*Num_ > Max_) *Num_ = Max_;
+}
+
 void HideCursor() {
     HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
     CONSOLE_CURSOR_INFO cursorInfo;
@@ -102,6 +108,53 @@ void SpawnObject(int FileIndex, float x, float y, float z, float azimFlight, flo
     TargetsNum++;
 }
 
+void AutoSpawnTarget() {
+    if (TargetsNum >= MaxTargets || TargetsMatrNum == 0) return;
+
+    int fileId = rand() % TargetsMatrNum;
+    TargetsLibData *src = &TargetsMatr[fileId];
+
+    float x = (float)(rand() % 100 - 50);
+    float y = (float)(rand() % 100 - 50);
+    float z = src->MaxAlt * ((rand() % 100) / 100.0f);
+
+    float azim = ((float)(rand() % 628)) / 100.0f;
+    int speed = (int)(src->MaxSpeed * (0.75f + (rand() % 51) / 100.0f));
+
+    SpawnObject(fileId, x, y, z, azim, speed);
+}
+
+#define MaxDistance 30.0f
+void RemoveFarTargets() {
+    for (int i = 0; i < TargetsNum; ) {
+        TargetsData *t = &ActiveTargets[i];
+
+        float dx = t->CoordX;
+        float dy = t->CoordY;
+        float distance = sqrtf(dx * dx + dy * dy);
+
+        if (distance < MaxDistance) {
+            i++;
+            continue;
+        }
+
+        float vx = cosf(t->AzimFlight) * t->Speed;
+        float vy = sinf(t->AzimFlight) * t->Speed;
+
+        float dot = dx * vx + dy * vy;
+
+        if (dot < 0) {
+            i++;
+            continue;
+        }
+
+        for (int j = i; j < TargetsNum - 1; j++) {
+            ActiveTargets[j] = ActiveTargets[j + 1];
+        }
+        TargetsNum--;
+    }
+}
+
 bool LoadData(const char *FilePath) {
     FILE *File = fopen(FilePath, "r");
     if (!File) {perror("Targets File not found"); return false;}
@@ -114,7 +167,7 @@ bool LoadData(const char *FilePath) {
         
         TargetsLibData *t = &TargetsMatr[TargetsMatrNum];
         
-        int parsed = sscanf(LineData, "%d;%d;%d;%.1f;%.1f;%.1f;%.1f;%31s;%15s", 
+        int parsed = sscanf(LineData, "%d %d %d %f %f %f %f %s31 %s15", 
             &t->Id, &t->MaxSpeed, &t->Hp, 
             &t->MaxAlt, &t->VisbCoef, &t->SizeCoef, 
             &t->ChanceSpot, t->TypeName, t->Side);
@@ -131,7 +184,7 @@ void DrawData(short TargetNum, short SelectedTarget, float Range, float Altitude
         GoToXY(48, 4+TargetNum);
         printf("%s", ">");
         GoToXY(51, 4+TargetNum);
-        printf("%s", "░░┃░░░░░░░░░┃░░░░░░░░░░░░░░░░");
+        printf("%s", "░░┃░       ░┃░               ");
         GoToXY(10, 26);
         IntToStr(TargetNum+1, str, sizeof(str));
         printf("%-2s", str); //TargetNum
@@ -147,8 +200,11 @@ void DrawData(short TargetNum, short SelectedTarget, float Range, float Altitude
         GoToXY(37, 26);
         printf("%-10s", Type); //Type
         GoToXY(37, 27);
+        printf("%s", "    ");
+        GoToXY(37, 27);
         IntToStr(Azimut, str, sizeof(str));
-        printf("%-3s°", str); //Azimut
+
+        printf("%s°", str); //Azimut
     }
     else {
         GoToXY(48, 4+TargetNum);
@@ -185,8 +241,7 @@ int main() {
     if (!OnDraw("UI.ini")) {
         printf("Make sure 'UI.ini' spot in the game directory.\n");
         Sleep(20000); return 1; }
-    printf("%s Gigga: ", TargetsMatr[1].TypeName);
-    if (!LoadData("TargetsLib.csv")) {
+    if (!LoadData("TargetsLib.ini")) {
         printf("Make sure 'TargetsLib.csv' spot in the game directory.\n");
         Sleep(20000); return 1; }
     
@@ -194,16 +249,33 @@ int main() {
     unsigned long TickNum = 0ul;
     unsigned short TickTime = 40;
     short SelectedTarget = 0;
-
-    SpawnObject(1, 21.0, 1.4, 1.4, 3.14, 350);
-    SpawnObject(2, 1, -14, 1.4, 1.57, 275);
+    short KeyDelay = 6;
+    int ButtonTimer = 0;
     
     while (!GameOver) {
         TickNum++;
         ObjectDataUpdate();
 
-        if (TickNum % 40 == 0) {
+        if (TickNum % 30 == 0) {
+            AutoSpawnTarget();
+        }
+        RemoveFarTargets();
+
+        ButtonTimer++;
+        Clamp(&ButtonTimer, KeyDelay + 1);
+        if ((GetAsyncKeyState(VK_UP) & 0x8000) && (ButtonTimer > KeyDelay)) {
+            SelectedTarget = (SelectedTarget - 1 + TargetsNum) % TargetsNum;
+            ButtonTimer = 0;
+        }
+        else if ((GetAsyncKeyState(VK_DOWN) & 0x8000) && (ButtonTimer > KeyDelay)) {
             SelectedTarget = (SelectedTarget + 1) % TargetsNum;
+            ButtonTimer = 0;
+        }
+        else if (!((GetAsyncKeyState(VK_UP) & 0x8000) || (GetAsyncKeyState(VK_DOWN) & 0x8000))) ButtonTimer = KeyDelay + 1;
+        
+        if (GetAsyncKeyState(VK_ESCAPE) & 0x8000) {
+            Sleep(2000);
+            GameOver = true;
         }
 
         for (int i = 0; i < TargetsNum; i++) 
